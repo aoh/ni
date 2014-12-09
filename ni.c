@@ -9,7 +9,7 @@
 #include <string.h>
 
 #define AIMROUNDS  256
-#define AIMAX      256
+#define AIMAX      512
 #define AIMLEN     1024
 #define RAND(x)    ((x)?(random()%(x)):0)
 #define MIN(a, b)  (((a) < (b)) ? a : b)
@@ -161,6 +161,19 @@ void output_num(char *buff, size_t buflen, long long n) {
    }
 }
 
+int sufscore(const char *a, size_t al, const char *b, size_t bl) {
+   int last = 256;
+   int n = 0;
+   while(al-- && bl-- && *a == *b && n < AIMAX) {
+      if (*a != last)
+         n += 32;
+      last = *a++;
+      b++;
+   }
+   return n;
+}
+
+/* note, could have a separate aimer for runs */
 void aim(const char *from, size_t fend, const char *to, size_t tend, size_t *jump, size_t *land) {
    size_t j, l;
    int best_score = 0, score, rounds = 0;
@@ -184,13 +197,11 @@ void aim(const char *from, size_t fend, const char *to, size_t tend, size_t *jum
       while(maxs-- && l < tend && from[j] != to[l]) {
          l++;
       }
-      score = 0;
-      while(j < fend && l < tend && from[j++] == to[l++] && score < AIMAX)
-         score++;
+      score = sufscore(from + j, fend - j, to + l, tend - l);
       if (score > best_score) {
-         *jump = j - score;
-         *land = l - score;
          best_score = score;
+         *jump = j;
+         *land = l;
       }
    }
 }
@@ -245,7 +256,7 @@ long long twiddle(long long val) {
 void mutate_area(const char *data, size_t end) {
    static char buff[BUFSIZE];
    retry:
-   switch(random() % 23) {
+   switch(random() % 26){
       case 0: { /* insert a random byte */
          size_t pos = (end ? random() % end : 0);
          write_all(data, pos);
@@ -319,21 +330,23 @@ void mutate_area(const char *data, size_t end) {
       case 7:
       case 8:
       case 9:
-      case 10: { /* aimed jump to self */
+      case 10:
+      case 11:
+      case 12: { /* aimed jump to self */
          size_t j=0, l=0;
          if (end < 5)
             goto retry;
-         while (j == l) {
+         while (j == l)
             aim(data, end, data, end, &j, &l);
-         }
          LOGM("ajmp");
          write_all(data, j);
          write_all(data+l, end-l);
          break; }
-      case 11:
-      case 12:
       case 13:
-      case 14: { /* aimed random block fusion */
+      case 14:
+      case 15:
+      case 16:
+      case 17: { /* aimed random block fusion */
          size_t j, l, dm, sm;
          char *buff;
          size_t bend;
@@ -354,8 +367,8 @@ void mutate_area(const char *data, size_t end) {
          write_all(buff, j);
          write_all(data + l, end - l);
          break; }
-      case 15:
-      case 16: { /* insert semirandom bytes */
+      case 18:
+      case 19: { /* insert semirandom bytes */
          size_t p = 0, n = RAND(BUFSIZE);
          size_t pos = (end ? random() % end : 0);
          n = RAND(n+1);
@@ -373,8 +386,8 @@ void mutate_area(const char *data, size_t end) {
          write_all(buff, p);
          write_all(data + pos, end - pos);
          break; }
-      case 17:
-      case 18: { /* overwrite semirandom bytes */
+      case 20:
+      case 21: { /* overwrite semirandom bytes */
          size_t a, b, p = 0;
          if (end < 2)
             goto retry;
@@ -389,10 +402,10 @@ void mutate_area(const char *data, size_t end) {
          if (end > b)
             write_all(data + b, end - b);
          break; }
-      case 19:
-      case 20:
-      case 21:
-      case 22: { /* textual number mutation */
+      case 22:
+      case 23:
+      case 24:
+      case 25: { /* textual number mutation */
          int n = RAND(AIMROUNDS);
          long long val;
          size_t ns, ne;
