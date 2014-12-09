@@ -206,6 +206,96 @@ void aim(const char *from, size_t fend, const char *to, size_t tend, size_t *jum
    }
 }
 
+int delim_of(char c) {
+   int d = 0;
+   switch(c) {
+      case '"': d = '"'; break;
+      case '<': d = '>'; break;
+      case '\n': d = '\n'; break;
+      case '(': d = ')'; break;
+      case '[': d = ']'; break;
+      case '{': d = '}'; break;
+      case '\'': d = '\''; break;
+      //case ' ': d = ' '; break;
+      case ',': d = ','; break;
+   }
+   return d;
+}
+
+int drange_start(const char *pos, size_t end, size_t *start, char *open, char *close) {
+   int rounds = 32;
+   printf("drange start search\n");
+   while (rounds--) {
+      size_t o = RAND(end);
+      int n = AIMLEN;
+      printf(" - rounds left %d, pos %d\n", rounds, o);
+      o = RAND(o+1); /* prefer beginning */
+      while(o < end && n--) {
+         char c = pos[o], d;
+         if (c & 128)
+            return 1;
+         d = delim_of(c);
+         if (d) {
+            printf("  - open search char is %c. delim %c\n", c, d);
+            *start = o;
+            *open = c;
+            *close = d;
+            return 0;
+         }
+      }
+   }
+   return 1;
+}
+
+/* return 0 for failure, called after open  */
+size_t drange_end(const char *data, size_t end, size_t pos, char open, char close) {
+   int depth = 1;
+   while(pos < end) {
+      char c = data[pos++];
+      if (c == close) {
+         depth--;
+         if (depth == 0) {
+            size_t next;
+            if (random() & 3)
+               return pos;
+            next = drange_end(data, end, pos, open, close);
+            if (next)
+               return next;
+            return pos;
+         }
+      } else if (c == open) {
+         depth++;
+      } else if (c & 128) {
+         return 0;
+      }
+   }
+   return 0;
+}
+
+int drange(const char *data, size_t end, size_t *start, size_t *len) {
+   size_t s, e;
+   char o, c;
+   if (drange_start(data, end, &s, &o, &c))
+      return 1;
+   printf(" - drange start %d, open %c, looking for close %c\n", s, o, c);
+   e = drange_end(data, end, s+1, o, c);
+   printf(" - end search returned %d\n", e);
+   if (e) {
+      *start = s;
+      *len = e - s;
+      return 0;
+   }
+   return 1;
+}
+
+void try_drange(const char *data, size_t len) {
+   size_t start, end;
+   if (!len || drange(data, len, &start, &end)) {
+      printf("Drange: nothing found\n");
+   } else {
+      printf("Drange from %d, len %d\n", start, end);
+   }
+}
 void seek_num(const char *pos, size_t end, size_t *ns, size_t *ne) {
    size_t o = RAND(end);
    while(o < end && (pos[o] < '0' || pos[o] > '9')) {
@@ -471,6 +561,7 @@ int ni_file(char *path) {
    }
    m = ((random() & 3) == 1) ? 1 : \
        2 + RAND(((unsigned int) st.st_size >> 12) + 8);
+   //try_drange(data, st.st_size);
    if (RAND(30)) {
       if (verbose) fprintf(stderr, ":");
       ni_area(data, st.st_size, m);
