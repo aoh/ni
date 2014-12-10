@@ -209,26 +209,24 @@ void aim(const char *from, size_t fend, const char *to, size_t tend, size_t *jum
 int delim_of(char c) {
    int d = 0;
    switch(c) {
-      case '"': d = '"'; break;
+      //case '"': d = '"'; break;
       case '<': d = '>'; break;
       case '\n': d = '\n'; break;
       case '(': d = ')'; break;
       case '[': d = ']'; break;
       case '{': d = '}'; break;
-      case '\'': d = '\''; break;
+      //case '\'': d = '\''; break;
       //case ' ': d = ' '; break;
-      case ',': d = ','; break;
+      //case ',': d = ','; break;
    }
    return d;
 }
 
 int drange_start(const char *pos, size_t end, size_t *start, char *open, char *close) {
    int rounds = 32;
-   printf("drange start search\n");
    while (rounds--) {
       size_t o = RAND(end);
       int n = AIMLEN;
-      printf(" - rounds left %d, pos %d\n", rounds, o);
       o = RAND(o+1); /* prefer beginning */
       while(o < end && n--) {
          char c = pos[o], d;
@@ -236,11 +234,29 @@ int drange_start(const char *pos, size_t end, size_t *start, char *open, char *c
             return 1;
          d = delim_of(c);
          if (d) {
-            printf("  - open search char is %c. delim %c\n", c, d);
-            *start = o;
-            *open = c;
-            *close = d;
+            *start = o; *open = c; *close = d;
             return 0;
+         }
+         o++;
+      }
+   }
+   return 1;
+}
+
+int drange_start_of(const char *pos, size_t end, char del, size_t *start) {
+   int rounds = 32;
+   while (rounds--) {
+      size_t o = RAND(end);
+      int n = AIMLEN;
+      while(o < end && n--) {
+         char c = pos[o];
+         if (c & 128) {
+            return 1;
+         } else if (c == del) {
+            *start = o;
+            return 0;
+         } else {
+            o++;
          }
       }
    }
@@ -272,18 +288,36 @@ size_t drange_end(const char *data, size_t end, size_t pos, char open, char clos
    return 0;
 }
 
-int drange(const char *data, size_t end, size_t *start, size_t *len) {
+int drange(const char *data, size_t end, size_t *rs, size_t *rl) {
    size_t s, e;
    char o, c;
    if (drange_start(data, end, &s, &o, &c))
       return 1;
-   printf(" - drange start %d, open %c, looking for close %c\n", s, o, c);
    e = drange_end(data, end, s+1, o, c);
-   printf(" - end search returned %d\n", e);
    if (e) {
-      *start = s;
-      *len = e - s;
+      *rs = s; 
+      *rl = e - s;
       return 0;
+   }
+   return 1;
+}
+
+int other_drange(const char *data, size_t end, size_t fs, size_t *r2s, size_t *r2l) {
+   char open = data[fs];
+   char close = delim_of(open);
+   int tries = 10;
+   size_t os = fs;
+   while(tries--) {
+      if (drange_start_of(data, end, open, &os))
+         return 1;
+      if (os != fs) {
+         size_t oe = drange_end(data, end, os+1, open, close);
+         if (oe) {
+            *r2s = os;
+            *r2l = oe - os;
+            return 0;
+         }
+      }
    }
    return 1;
 }
@@ -293,9 +327,36 @@ void try_drange(const char *data, size_t len) {
    if (!len || drange(data, len, &start, &end)) {
       printf("Drange: nothing found\n");
    } else {
-      printf("Drange from %d, len %d\n", start, end);
+      const char *p = data + start;
+      size_t os, ol;
+      printf("Drange from %d, len %d: [", (int) start, (int) end);
+      while(end--) {
+         char c = *p++;
+         if (c == 10) {
+            printf("\\n");
+         } else {
+            putchar(c);
+         }
+      }
+      printf("]\n");
+      if (other_drange(data, len, start, &os, &ol)) {
+         printf("Drange: no other range found\n");
+      } else {
+         const char *p = data + os;
+         printf("Drange: other range found: [");
+         while(ol--) {
+            char c = *p++;
+            if (c == 10) {
+               printf("\\n");
+            } else {
+               putchar(c);
+            }
+         }
+         printf("]\n");
+      }
    }
 }
+
 void seek_num(const char *pos, size_t end, size_t *ns, size_t *ne) {
    size_t o = RAND(end);
    while(o < end && (pos[o] < '0' || pos[o] > '9')) {
@@ -346,7 +407,7 @@ long long twiddle(long long val) {
 void mutate_area(const char *data, size_t end) {
    static char buff[BUFSIZE];
    retry:
-   switch(random() % 26){
+   switch(random() % 30) {
       case 0: { /* insert a random byte */
          size_t pos = (end ? random() % end : 0);
          write_all(data, pos);
@@ -516,6 +577,24 @@ void mutate_area(const char *data, size_t end) {
          }
          write_all(data + ne, end - ne);
          break; }
+      case 26:
+      case 27:
+      case 28:
+      case 29: { /* delimited swap */
+         size_t r1s, r1l, r2s, r2l;
+         if (!end || \
+               drange(data, end, &r1s, &r1l) || \
+               other_drange(data, end, r1s, &r2s, &r2l))
+            goto retry;
+         //printf("Dranges from %d len %d (%c), from %d len %d (%c)\n", r1s, r1l, data[r1s], r2s, r2l, data[r2s]);
+         write_all(data, r1s);
+         write_all(data + r2s, r2l);
+         if (r2s > (r1s + r1l)) { /* these can overlap */
+            write_all(data + r1s + r1l, r2s - (r1s + r1l));
+         }
+         write_all(data + r1s, r1l);
+         write_all(data + r2s + r2l, end - (r2s + r2l));
+         break; }
       default:
          perror ("ni: bad mutation\n");
          exit(1);
@@ -561,7 +640,6 @@ int ni_file(char *path) {
    }
    m = ((random() & 3) == 1) ? 1 : \
        2 + RAND(((unsigned int) st.st_size >> 12) + 8);
-   //try_drange(data, st.st_size);
    if (RAND(30)) {
       if (verbose) fprintf(stderr, ":");
       ni_area(data, st.st_size, m);
