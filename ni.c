@@ -407,7 +407,7 @@ long long twiddle(long long val) {
 void mutate_area(const char *data, size_t end) {
    static char buff[BUFSIZE];
    retry:
-   switch(random() % 30) {
+   switch(random() % 35) {
       case 0: { /* insert a random byte */
          size_t pos = (end ? random() % end : 0);
          write_all(data, pos);
@@ -497,7 +497,11 @@ void mutate_area(const char *data, size_t end) {
       case 14:
       case 15:
       case 16:
-      case 17: { /* aimed random block fusion */
+      case 17:
+      case 18:
+      case 19:
+      case 20:
+      case 21: { /* aimed random block fusion */
          size_t j, l, dm, sm;
          char *buff;
          size_t bend;
@@ -518,8 +522,8 @@ void mutate_area(const char *data, size_t end) {
          write_all(buff, j);
          write_all(data + l, end - l);
          break; }
-      case 18:
-      case 19: { /* insert semirandom bytes */
+      case 22:
+      case 23: { /* insert semirandom bytes */
          size_t p = 0, n = RAND(BUFSIZE);
          size_t pos = (end ? random() % end : 0);
          n = RAND(n+1);
@@ -537,8 +541,7 @@ void mutate_area(const char *data, size_t end) {
          write_all(buff, p);
          write_all(data + pos, end - pos);
          break; }
-      case 20:
-      case 21: { /* overwrite semirandom bytes */
+      case 24: { /* overwrite semirandom bytes */
          size_t a, b, p = 0;
          if (end < 2)
             goto retry;
@@ -553,10 +556,10 @@ void mutate_area(const char *data, size_t end) {
          if (end > b)
             write_all(data + b, end - b);
          break; }
-      case 22:
-      case 23:
-      case 24:
-      case 25: { /* textual number mutation */
+      case 25:
+      case 26:
+      case 27:
+      case 28: { /* textual number mutation */
          int n = RAND(AIMROUNDS);
          long long val;
          size_t ns, ne;
@@ -577,10 +580,12 @@ void mutate_area(const char *data, size_t end) {
          }
          write_all(data + ne, end - ne);
          break; }
-      case 26:
-      case 27:
-      case 28:
-      case 29: { /* delimited swap */
+      case 29:
+      case 30:
+      case 31:
+      case 32:
+      case 33:
+      case 34: { /* delimited swap */
          size_t r1s, r1l, r2s, r2l;
          if (!end || \
                drange(data, end, &r1s, &r1l) || \
@@ -605,7 +610,7 @@ void ni_area(const char *data, size_t end, int n) {
    if (n == 0) {
       write_all(data, end);
       return;
-   } else if (n == 1 || end == 0) {
+   } else if (n == 1 || end < 256) {
       mutate_area(data, end);
    } else if (!end) {
       return;
